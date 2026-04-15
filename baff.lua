@@ -9,7 +9,7 @@ getgenv().AutoRoll = false
 getgenv().AutoBuy = false
 getgenv().AutoClick = false
 getgenv().SelectedSeeds = {}
-
+getgenv().RollDelay = 0.3
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
 -- Загружаем Rayfield
@@ -25,30 +25,6 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Главная", 4483362458) 
-
--- ================================
--- 1. АВТО-РОЛЛ (ОТБАЛАНСИРОВАН)
--- ================================
-MainTab:CreateToggle({
-    Name = "Моментальный Auto Roll",
-    CurrentValue = false,
-    Flag = "AutoRoll",
-    Callback = function(Value)
-        getgenv().AutoRoll = Value
-        if getgenv().AutoRoll then
-            task.spawn(function()
-                while getgenv().AutoRoll do
-                    pcall(function()
-                        game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
-                    end)
-                    -- УВЕЛИЧИЛИ ДИЛЕЙ, чтобы не душить сеть роблокса
-                    task.wait(0.5) 
-                end
-            end)
-        end
-    end,
-})
-
 -- ================================
 -- 2. АВТО-КЛИКЕР РАСТЕНИЙ
 -- ================================
@@ -160,7 +136,7 @@ MainTab:CreateToggle({
                         end
                     end)
                     -- УМЕНЬШИЛИ ДИЛЕЙ, чтобы скан пней летал со скоростью света
-                    task.wait(0.1) 
+                    task.wait(0) 
                 end
             end)
         end
@@ -172,4 +148,36 @@ Rayfield:Notify({
     Content = "Задержки оптимизированы. Погнали!",
     Duration = 3,
     Image = 4483362458,
+})
+MainTab:CreateToggle({
+    Name = "Auto Roll",
+    CurrentValue = false,
+    Flag = "AutoRoll",
+    Callback = function(Value)
+        getgenv().AutoRoll = Value
+        if getgenv().AutoRoll then
+            task.spawn(function()
+                while getgenv().AutoRoll do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
+                    end)
+                    -- Используем значение из слайдера
+                    task.wait(getgenv().RollDelay) 
+                end
+            end)
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Задержка ролла (сек)",
+    Info = "0.3 = 300мс. Чем меньше, тем быстрее!",
+    Range = {0, 1},
+    Increment = 0.001,
+    Suffix = "сек",
+    CurrentValue = 0.3,
+    Flag = "RollDelay",
+    Callback = function(Value)
+        getgenv().RollDelay = Value
+    end,
 })
