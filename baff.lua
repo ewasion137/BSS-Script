@@ -106,19 +106,35 @@ MainTab:CreateDropdown({
     Flag = "SeedDrop",
     Callback = function(Options)
         getgenv().SelectedSeeds = Options
-        print("[Дебаг] Выбраны семена:", table.concat(Options, ", "))
     end,
 })
 
--- Новая, пуленепробиваемая функция поиска текста
 local function GetTextsFromStump(stump)
     local texts = {}
-    if stump and stump:FindFirstChild("Model") and stump.Model:FindFirstChild("BuyableDisplay") then
-        -- Ищем вообще ВСЕ текстовые лейблы внутри BuyableDisplay
-        for _, obj in pairs(stump.Model.BuyableDisplay:GetDescendants()) do
-            if obj:IsA("TextLabel") and obj.Text and obj.Text ~= "" then
-                table.insert(texts, obj.Text)
+    if stump then
+        local model = stump:FindFirstChild("Model")
+        if model then
+            local display = model:FindFirstChild("BuyableDisplay")
+            if display then
+                -- Ищем все тексты внутри дисплея
+                for _, obj in pairs(display:GetDescendants()) do
+                    if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+                        if obj.Text and obj.Text ~= "" and obj.Text ~= "Label" then
+                            table.insert(texts, obj.Text)
+                        end
+                    end
+                end
+                
+                -- Если сам Title - это 3D текст или SurfaceGui, попробуем вытащить так
+                local title = display:FindFirstChild("Title")
+                if title and title:IsA("TextLabel") then
+                    table.insert(texts, title.Text)
+                end
+            else
+                print("[Дебаг] У пня", stump.Name, "нет BuyableDisplay!")
             end
+        else
+            print("[Дебаг] У пня", stump.Name, "нет Model!")
         end
     end
     return texts
@@ -133,31 +149,51 @@ MainTab:CreateToggle({
         if getgenv().AutoBuy then
             task.spawn(function()
                 while getgenv().AutoBuy do
-                    pcall(function()
-                        local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name)
-                        if playerPlot then
-                            local BuyRemote = game:GetService("ReplicatedStorage").Communication.BuySeeds
+                    print("[Дебаг] --- НОВЫЙ КРУГ ПОИСКА ---")
+                    
+                    -- Пробуем найти плот по Username
+                    local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name)
+                    
+                    -- Если не нашли, пробуем по DisplayName
+                    if not playerPlot then
+                        playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.DisplayName)
+                    end
+                    
+                    if playerPlot then
+                        print("[Дебаг] Плот успешно найден:", playerPlot.Name)
+                        local BuyRemote = game:GetService("ReplicatedStorage").Communication.BuySeeds
+                        
+                        -- Проверяем 8 пней
+                        for i = 1, 8 do
+                            local stumpName = "Stump_" .. tostring(i)
+                            local stump = playerPlot:FindFirstChild(stumpName)
                             
-                            -- Сканируем 8 пней
-                            for i = 1, 8 do
-                                local stump = playerPlot:FindFirstChild("Stump_" .. tostring(i))
+                            if stump then
                                 local stumpTexts = GetTextsFromStump(stump)
-                                
-                                -- Если пень найден и текст считан, проверяем совпадения
-                                for _, textOnDisplay in pairs(stumpTexts) do
-                                    for _, chosenSeed in pairs(getgenv().SelectedSeeds) do
-                                        -- Переводим в нижний регистр для надежности (Strawberry == strawberry)
-                                        if string.find(string.lower(textOnDisplay), string.lower(chosenSeed)) then
-                                            print("[Дебаг] НАШЕЛ!", chosenSeed, "на пне", i, "Текст:", textOnDisplay)
-                                            -- Отправляем запрос
-                                            BuyRemote:FireServer(i)
+                                if #stumpTexts > 0 then
+                                    print("[Дебаг]", stumpName, "вижу тексты:", table.concat(stumpTexts, " | "))
+                                    
+                                    for _, textOnDisplay in pairs(stumpTexts) do
+                                        for _, chosenSeed in pairs(getgenv().SelectedSeeds) do
+                                            if string.find(string.lower(textOnDisplay), string.lower(chosenSeed)) then
+                                                print("[Дебаг] >>> СОВПАДЕНИЕ! Покупаю", chosenSeed, "на пне", i)
+                                                BuyRemote:FireServer(i)
+                                            end
                                         end
                                     end
+                                else
+                                    print("[Дебаг]", stumpName, "- текстов не найдено.")
                                 end
+                            else
+                                print("[Дебаг] ОШИБКА: Не могу найти", stumpName, "в плоте!")
                             end
                         end
-                    end)
-                    task.wait(1)
+                    else
+                        print("[Дебаг] КРИТИЧЕСКАЯ ОШИБКА: Плот игрока НЕ НАЙДЕН!")
+                        print("[Дебаг] Мой Name:", LocalPlayer.Name, "| Мой DisplayName:", LocalPlayer.DisplayName)
+                    end
+                    
+                    task.wait(2) -- Задержка 2 секунды, чтобы не спамить консоль слишком жестко
                 end
             end)
         end
