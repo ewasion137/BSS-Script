@@ -9,15 +9,17 @@ getgenv().EwasionScriptLoaded = true
 -- Глобальные переменные для наших циклов
 getgenv().AutoRoll = false
 getgenv().AutoSprouts = false
-
 local SeedList = {
     "Strawberry", "Carrot", "Tomato", "Corn", "Blueberry", 
-    "Potato", "Sugarcane", "Watermelon", "Blackberry", "Beet", 
-    "Kiwi", "Pineapple", "Pricly Pear"
+    "Potato", "Sugarcane", "Watermelon", "Blackberry", 
+    "Beet", "Kiwi", "Pineapple", "Pricly Pear"
 }
-getgenv().SelectedSeed = SeedList[1] 
+
+-- Тут будем хранить те семена, которые ты выбрал в меню
+getgenv().SelectedSeeds = {}
 
 -- Загружаем Rayfield UI
+local LocalPlayer = game:GetService("Players").LocalPlayer
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Создаем главное окно
@@ -41,6 +43,7 @@ local Window = Rayfield:CreateWindow({
 -- Создаем вкладку
 local MainTab = Window:CreateTab("Главная", 4483362458) 
 
+-- ТУТ БУДЕТ ЛОГИКА АВТО-РОЛЛА
 MainTab:CreateToggle({
     Name = "Моментальный Auto Roll",
     CurrentValue = false,
@@ -64,79 +67,6 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateDropdown({
-    Name = "Выбрать семя для автопокупки",
-    Options = SeedList,
-    CurrentOption = {getgenv().SelectedSeed},
-    MultipleOptions = false,
-    Flag = "SeedSelector",
-    Callback = function(Option)
-        getgenv().SelectedSeed = Option[1]
-        print("Выбрано для покупки: " .. getgenv().SelectedSeed)
-    end,
-})
-
--- Создаем тумблер Автопокупки
-MainTab:CreateToggle({
-    Name = "Автопокупка семян",
-    CurrentValue = false,
-    Flag = "AutoBuyToggle",
-    Callback = function(Value)
-        getgenv().AutoBuy = Value
-        
-        if getgenv().AutoBuy then
-            task.spawn(function()
-                local playerPlotName = game.Players.LocalPlayer.Name
-                
-                while getgenv().AutoBuy do
-                    task.wait(0.5) -- Проверяем пеньки каждые полсекунды
-                    
-                    -- Ищем твой плот в Workspace
-                    local myPlot = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild(playerPlotName)
-                    
-                    if myPlot then
-                        -- Перебираем пеньки от 1 до 8
-                        for i = 1, 8 do
-                            local stumpName = "Stump_" .. tostring(i)
-                            local stump = myPlot:FindFirstChild(stumpName)
-                            
-                            if stump and stump:FindFirstChild("Model") then
-                                -- Ищем табличку с названием
-                                local display = stump.Model:FindFirstChild("BuyableDisplay")
-                                local title = display and display:FindFirstChild("Title")
-                                
-                                -- Если табличка есть и у нее есть текст (TextLabel)
-                                if title and title:IsA("TextLabel") or title:IsA("TextButton") then
-                                    
-                                    -- Проверяем, написано ли там название выбранного семени
-                                    -- string.find ищет, например, "Strawberry" внутри "Strawberry Seeds"
-                                    if string.find(title.Text, getgenv().SelectedSeed) then
-                                        
-                                        -- Нашли нужное семя! Пытаемся его купить:
-                                        
-                                        -- Вариант 1: Если там ProximityPrompt (нужно зажать клавишу)
-                                        local prompt = stump:FindFirstChildWhichIsA("ProximityPrompt", true)
-                                        if prompt then
-                                            fireproximityprompt(prompt)
-                                        end
-                                        
-                                        -- Вариант 2: Если там ClickDetector (нужно кликнуть мышкой)
-                                        local clickDetector = stump:FindFirstChildWhichIsA("ClickDetector", true)
-                                        if clickDetector then
-                                            fireclickdetector(clickDetector)
-                                        end
-                                        
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end,
-})
-
 -- ТУТ БУДЕТ ЛОГИКА АВТО-РОСТКОВ
 MainTab:CreateToggle({
     Name = "Auto Click Sprouts",
@@ -151,6 +81,86 @@ MainTab:CreateToggle({
                     task.wait(0.2)
                     -- СЮДА ВСТАВИМ ЛОГИКУ ПОИСКА РОСТКОВ
                     -- Как только скажешь, как они называются и что внутри (ClickDetector/ProximityPrompt)
+                end
+            end)
+        end
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name = "Выбор семян для автопокупки",
+    Options = SeedList,
+    CurrentOption = {},
+    MultipleOptions = true, -- Включаем мульти-выбор!
+    Flag = "SeedDropdown",
+    Callback = function(Options)
+        getgenv().SelectedSeeds = Options -- Сохраняем выбранные семена в переменную
+    end,
+})
+
+-- Функция, которая пытается вытащить название семени из пня
+local function CheckStumpForSeed(stump)
+    if stump and stump:FindFirstChild("Model") and stump.Model:FindFirstChild("BuyableDisplay") then
+        local title = stump.Model.BuyableDisplay:FindFirstChild("Title")
+        if title then
+            -- Проходим по всем детям Title (скорее всего там SurfaceGui и TextLabel)
+            for _, obj in pairs(title:GetDescendants()) do
+                if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("StringValue") then
+                    return obj.Text or obj.Value -- Вернет что-то типа "Strawberry Seeds"
+                end
+            end
+        end
+    end
+    return ""
+end
+
+-- Тоггл автопокупки
+MainTab:CreateToggle({
+    Name = "Автопокупка выбранных семян",
+    CurrentValue = false,
+    Flag = "AutoBuyToggle",
+    Callback = function(Value)
+        getgenv().AutoBuy = Value
+        
+        if getgenv().AutoBuy then
+            task.spawn(function()
+                while getgenv().AutoBuy do
+                    local success, err = pcall(function()
+                        -- Ищем твой плот по твоему нику
+                        local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name)
+                        
+                        if playerPlot then
+                            -- Проверяем все 8 пней
+                            for i = 1, 8 do
+                                local stump = playerPlot:FindFirstChild("Stump_" .. tostring(i))
+                                local textOnDisplay = CheckStumpForSeed(stump)
+                                
+                                -- Проверяем, есть ли текст с пня в нашем списке выбранных семян
+                                for _, chosenSeed in pairs(getgenv().SelectedSeeds) do
+                                    -- Если в тексте "Strawberry Seeds" есть слово "Strawberry"
+                                    if string.find(textOnDisplay, chosenSeed) then
+                                        
+                                        -- ПОКУПАЕМ!
+                                        -- ВАЖНО: Ниже я написал пример. 
+                                        -- Тебе нужно узнать через SimpleSpy, какие аргументы принимает BuySeeds!
+                                        
+                                        local BuyRemote = game:GetService("ReplicatedStorage").Communication.BuySeeds
+                                        
+                                        -- Вариант 1 (передает номер пня, например 1, 2, 3):
+                                        BuyRemote:InvokeServer(i) 
+                                        
+                                        -- Вариант 2 (передает название семени):
+                                        -- BuyRemote:InvokeServer(chosenSeed) 
+                                        
+                                        -- Вариант 3 (передает саму модельку пня):
+                                        -- BuyRemote:InvokeServer(stump)
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                    
+                    task.wait(1) -- Сканируем пни раз в секунду
                 end
             end)
         end
