@@ -10,6 +10,8 @@ getgenv().AutoBuy = false
 getgenv().AutoClick = false
 getgenv().SelectedSeeds = {}
 getgenv().RollDelay = 0.3
+getgenv().StopRollSeed = "Kiwi" -- По умолчанию останавливаемся на киви для теста
+
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
 -- Загружаем Rayfield
@@ -25,8 +27,9 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Главная", 4483362458) 
+
 -- ================================
--- 2. АВТО-КЛИКЕР РАСТЕНИЙ
+-- 1. АВТО-КЛИКЕР РАСТЕНИЙ
 -- ================================
 MainTab:CreateToggle({
     Name = "Auto Click Plants (Ростки)",
@@ -38,7 +41,6 @@ MainTab:CreateToggle({
             task.spawn(function()
                 while getgenv().AutoClick do
                     pcall(function()
-                        -- Ищем плот (на всякий случай по Name и DisplayName)
                         local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name) or workspace.Plots:FindFirstChild(LocalPlayer.DisplayName)
                         
                         if playerPlot and playerPlot:FindFirstChild("Tiles") then
@@ -64,7 +66,7 @@ MainTab:CreateToggle({
 })
 
 -- ================================
--- 3. АВТО-ПОКУПКА СЕМЯН (ОТБАЛАНСИРОВАНА)
+-- 2. АВТО-ПОКУПКА СЕМЯН
 -- ================================
 local SeedList = {
     "Strawberry", "Carrot", "Tomato", "Corn", "Blueberry", 
@@ -127,7 +129,6 @@ MainTab:CreateToggle({
                                 for _, textOnDisplay in pairs(stumpTexts) do
                                     for _, chosenSeed in pairs(getgenv().SelectedSeeds) do
                                         if string.find(string.lower(textOnDisplay), string.lower(chosenSeed)) then
-                                            -- Моментально покупаем при совпадении
                                             BuyRemote:FireServer(i)
                                         end
                                     end
@@ -135,7 +136,6 @@ MainTab:CreateToggle({
                             end
                         end
                     end)
-                    -- УМЕНЬШИЛИ ДИЛЕЙ, чтобы скан пней летал со скоростью света
                     task.wait(0) 
                 end
             end)
@@ -143,14 +143,26 @@ MainTab:CreateToggle({
     end,
 })
 
-Rayfield:Notify({
-    Title = "Ewasion Hub загружен",
-    Content = "Задержки оптимизированы. Погнали!",
-    Duration = 3,
-    Image = 4483362458,
+-- ================================
+-- 3. АВТО-РОЛЛ С ОСТАНОВКОЙ
+-- ================================
+MainTab:CreateDropdown({
+    Name = "Остановить ролл, если выпадет:",
+    Options = SeedList,
+    CurrentOption = {"Kiwi"}, -- Тестовое значение
+    MultipleOptions = false,
+    Flag = "StopRollDrop",
+    Callback = function(Option)
+        -- Rayfield отдает массив даже если MultipleOptions = false, поэтому берем Option[1]
+        getgenv().StopRollSeed = type(Option) == "table" and Option[1] or Option
+    end,
 })
+
+-- Переменная для тумблера, чтобы скрипт мог его сам отключить
+local AutoRollToggle 
+
 AutoRollToggle = MainTab:CreateToggle({
-    Name = "Auto Roll (Стоп на Prickly Pear)",
+    Name = "Auto Roll",
     CurrentValue = false,
     Flag = "AutoRoll",
     Callback = function(Value)
@@ -158,36 +170,34 @@ AutoRollToggle = MainTab:CreateToggle({
         if getgenv().AutoRoll then
             task.spawn(function()
                 while getgenv().AutoRoll do
-                    local success, result = pcall(function()
-                        -- DoRoll обычно является RemoteFunction и возвращает данные о выпавшем семени
+                    -- Ловим то, что сервер нам отвечает
+                    local success, rollResult = pcall(function()
                         return game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
                     end)
-
-                    if success and result then
-                        -- Проверяем результат. Обычно это либо строка "Prickly Pear", 
-                        -- либо таблица {Name = "Prickly Pear", ...}
-                        local seedName = ""
-                        if type(result) == "string" then
-                            seedName = result
-                        elseif type(result) == "table" and result.Name then
-                            seedName = result.Name
-                        end
-
-                        -- Если нашли Prickly Pear
-                        if string.find(seedName, "Prickly Pear") then
-                            getgenv().AutoRoll = false
-                            
-                            -- Уведомление игрока
-                            Rayfield:Notify({
-                                Title = "УДАЧА! 🌵",
-                                Content = "Выпал Prickly Pear! Авто-ролл остановлен.",
-                                Duration = 10,
-                                Image = 4483362458,
-                            })
-
-                            -- Выключаем галочку в меню визуально
-                            AutoRollToggle:Set(false)
-                            break -- Выходим из цикла
+                    
+                    if success then
+                        -- Выводим в F9, чтобы понять, какой формат у ответа
+                        print("[Дебаг Ролла] Выпало:", tostring(rollResult))
+                        
+                        -- Если сервер прислал название (строку)
+                        if rollResult and type(rollResult) == "string" then
+                            -- Сравниваем в нижнем регистре
+                            if string.find(string.lower(rollResult), string.lower(getgenv().StopRollSeed)) then
+                                print("🎉 УРА! ВЫПАЛО:", getgenv().StopRollSeed, "- СТОПАЕМ РОЛЛ!")
+                                
+                                -- Выключаем цикл
+                                getgenv().AutoRoll = false
+                                -- Визуально отключаем тумблер в менюшке
+                                AutoRollToggle:Set(false)
+                                
+                                -- Красивая уведомлялка
+                                Rayfield:Notify({
+                                    Title = "ДЖЕКПОТ! 🎯",
+                                    Content = "Авто-ролл остановлен! Выпало: " .. getgenv().StopRollSeed,
+                                    Duration = 10,
+                                    Image = 4483362458,
+                                })
+                            end
                         end
                     end
                     
@@ -209,4 +219,11 @@ MainTab:CreateSlider({
     Callback = function(Value)
         getgenv().RollDelay = Value
     end,
+})
+
+Rayfield:Notify({
+    Title = "Ewasion Hub загружен",
+    Content = "Задержки оптимизированы. Погнали!",
+    Duration = 3,
+    Image = 4483362458,
 })
