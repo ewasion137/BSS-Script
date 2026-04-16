@@ -28,49 +28,35 @@ local MainTab = Window:CreateTab("Главная", 4483362458)
 -- ================================
 -- 2. АВТО-КЛИКЕР РАСТЕНИЙ
 -- ================================
-AutoRollToggle = MainTab:CreateToggle({
-    Name = "Auto Roll (Стоп на Prickly Pear)",
+MainTab:CreateToggle({
+    Name = "Auto Click Plants (Ростки)",
     CurrentValue = false,
-    Flag = "AutoRoll",
+    Flag = "AutoClick",
     Callback = function(Value)
-        getgenv().AutoRoll = Value
-        if getgenv().AutoRoll then
+        getgenv().AutoClick = Value
+        if getgenv().AutoClick then
             task.spawn(function()
-                while getgenv().AutoRoll do
-                    local success, result = pcall(function()
-                        -- DoRoll обычно является RemoteFunction и возвращает данные о выпавшем семени
-                        return game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
-                    end)
-
-                    if success and result then
-                        -- Проверяем результат. Обычно это либо строка "Prickly Pear", 
-                        -- либо таблица {Name = "Prickly Pear", ...}
-                        local seedName = ""
-                        if type(result) == "string" then
-                            seedName = result
-                        elseif type(result) == "table" and result.Name then
-                            seedName = result.Name
-                        end
-
-                        -- Если нашли Prickly Pear
-                        if string.find(seedName, "Prickly Pear") then
-                            getgenv().AutoRoll = false
+                while getgenv().AutoClick do
+                    pcall(function()
+                        -- Ищем плот (на всякий случай по Name и DisplayName)
+                        local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name) or workspace.Plots:FindFirstChild(LocalPlayer.DisplayName)
+                        
+                        if playerPlot and playerPlot:FindFirstChild("Tiles") then
+                            local clickRemote = game:GetService("ReplicatedStorage").Communication.ClickPlant
                             
-                            -- Уведомление игрока
-                            Rayfield:Notify({
-                                Title = "УДАЧА! 🌵",
-                                Content = "Выпал Prickly Pear! Авто-ролл остановлен.",
-                                Duration = 10,
-                                Image = 4483362458,
-                            })
-
-                            -- Выключаем галочку в меню визуально
-                            AutoRollToggle:Set(false)
-                            break -- Выходим из цикла
+                            for x = -13, 1 do
+                                for y = 0, 17 do
+                                    local tileName = tostring(x) .. "_" .. tostring(y)
+                                    local tile = playerPlot.Tiles:FindFirstChild(tileName)
+                                    
+                                    if tile then
+                                        clickRemote:FireServer(tile)
+                                    end
+                                end
+                            end
                         end
-                    end
-                    
-                    task.wait(getgenv().RollDelay) 
+                    end)
+                    task.wait(0.1) 
                 end
             end)
         end
@@ -163,8 +149,13 @@ Rayfield:Notify({
     Duration = 3,
     Image = 4483362458,
 })
-MainTab:CreateToggle({
-    Name = "Auto Roll",
+-- В начале скрипта (где-то после создания MainTab) создаем переменную для тоггла, 
+-- чтобы иметь возможность выключить его программно.
+
+local AutoRollToggle -- Объявляем заранее
+
+AutoRollToggle = MainTab:CreateToggle({
+    Name = "Auto Roll (Стоп на Prickly Pear)",
     CurrentValue = false,
     Flag = "AutoRoll",
     Callback = function(Value)
@@ -172,17 +163,45 @@ MainTab:CreateToggle({
         if getgenv().AutoRoll then
             task.spawn(function()
                 while getgenv().AutoRoll do
-                    pcall(function()
-                        game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
+                    local success, result = pcall(function()
+                        -- DoRoll обычно является RemoteFunction и возвращает данные о выпавшем семени
+                        return game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
                     end)
-                    -- Используем значение из слайдера
+
+                    if success and result then
+                        -- Проверяем результат. Обычно это либо строка "Prickly Pear", 
+                        -- либо таблица {Name = "Prickly Pear", ...}
+                        local seedName = ""
+                        if type(result) == "string" then
+                            seedName = result
+                        elseif type(result) == "table" and result.Name then
+                            seedName = result.Name
+                        end
+
+                        -- Если нашли Prickly Pear
+                        if string.find(seedName, "Prickly Pear") then
+                            getgenv().AutoRoll = false
+                            
+                            -- Уведомление игрока
+                            Rayfield:Notify({
+                                Title = "УДАЧА! 🌵",
+                                Content = "Выпал Prickly Pear! Авто-ролл остановлен.",
+                                Duration = 10,
+                                Image = 4483362458,
+                            })
+
+                            -- Выключаем галочку в меню визуально
+                            AutoRollToggle:Set(false)
+                            break -- Выходим из цикла
+                        end
+                    end
+                    
                     task.wait(getgenv().RollDelay) 
                 end
             end)
         end
     end,
 })
-
 MainTab:CreateSlider({
     Name = "Задержка ролла (сек)",
     Info = "0.3 = 300мс. Чем меньше, тем быстрее!",
