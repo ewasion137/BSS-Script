@@ -28,35 +28,49 @@ local MainTab = Window:CreateTab("Главная", 4483362458)
 -- ================================
 -- 2. АВТО-КЛИКЕР РАСТЕНИЙ
 -- ================================
-MainTab:CreateToggle({
-    Name = "Auto Click Plants (Ростки)",
+AutoRollToggle = MainTab:CreateToggle({
+    Name = "Auto Roll (Стоп на Prickly Pear)",
     CurrentValue = false,
-    Flag = "AutoClick",
+    Flag = "AutoRoll",
     Callback = function(Value)
-        getgenv().AutoClick = Value
-        if getgenv().AutoClick then
+        getgenv().AutoRoll = Value
+        if getgenv().AutoRoll then
             task.spawn(function()
-                while getgenv().AutoClick do
-                    pcall(function()
-                        -- Ищем плот (на всякий случай по Name и DisplayName)
-                        local playerPlot = workspace.Plots:FindFirstChild(LocalPlayer.Name) or workspace.Plots:FindFirstChild(LocalPlayer.DisplayName)
-                        
-                        if playerPlot and playerPlot:FindFirstChild("Tiles") then
-                            local clickRemote = game:GetService("ReplicatedStorage").Communication.ClickPlant
-                            
-                            for x = -13, 1 do
-                                for y = 0, 17 do
-                                    local tileName = tostring(x) .. "_" .. tostring(y)
-                                    local tile = playerPlot.Tiles:FindFirstChild(tileName)
-                                    
-                                    if tile then
-                                        clickRemote:FireServer(tile)
-                                    end
-                                end
-                            end
-                        end
+                while getgenv().AutoRoll do
+                    local success, result = pcall(function()
+                        -- DoRoll обычно является RemoteFunction и возвращает данные о выпавшем семени
+                        return game:GetService("ReplicatedStorage").Communication.DoRoll:InvokeServer()
                     end)
-                    task.wait(0.1) 
+
+                    if success and result then
+                        -- Проверяем результат. Обычно это либо строка "Prickly Pear", 
+                        -- либо таблица {Name = "Prickly Pear", ...}
+                        local seedName = ""
+                        if type(result) == "string" then
+                            seedName = result
+                        elseif type(result) == "table" and result.Name then
+                            seedName = result.Name
+                        end
+
+                        -- Если нашли Prickly Pear
+                        if string.find(seedName, "Prickly Pear") then
+                            getgenv().AutoRoll = false
+                            
+                            -- Уведомление игрока
+                            Rayfield:Notify({
+                                Title = "УДАЧА! 🌵",
+                                Content = "Выпал Prickly Pear! Авто-ролл остановлен.",
+                                Duration = 10,
+                                Image = 4483362458,
+                            })
+
+                            -- Выключаем галочку в меню визуально
+                            AutoRollToggle:Set(false)
+                            break -- Выходим из цикла
+                        end
+                    end
+                    
+                    task.wait(getgenv().RollDelay) 
                 end
             end)
         end
@@ -69,7 +83,7 @@ MainTab:CreateToggle({
 local SeedList = {
     "Strawberry", "Carrot", "Tomato", "Corn", "Blueberry", 
     "Potato", "Sugarcane", "Watermelon", "Blackberry", 
-    "Beet", "Kiwi", "Pineapple", "Pricly Pear"
+    "Beet", "Kiwi", "Pineapple", "Prickly Pear"
 }
 
 MainTab:CreateDropdown({
